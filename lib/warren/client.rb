@@ -1,5 +1,7 @@
-class Warren::Client
-  def initialize()
-    puts "NEW WARREN CLIENT"
+module Warren
+  class Client
+    def initialize()
+      puts "NEW WARREN CLIENT"
+    end
   end
 end
