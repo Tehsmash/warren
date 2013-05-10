@@ -12,12 +12,16 @@ module Warren
         yield self
       end
     end
-
+    
     def channel
-      return @channel
+      @channel
     end
 
     def kill
+      @stop_connection
+    end
+
+    def kill_now
       @stop_connection.call()
     end 
   end
