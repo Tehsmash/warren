@@ -1,6 +1,7 @@
 module Warren
   require 'warren/daemon_process'
   require 'warren/message_bus_manager'
+  require 'json'
   class Client < Warren::DaemonProcess
     PID_LOCATION = "/Users/sambetts/.warren/warren_client.pid"
     def initialize(name)
@@ -8,10 +9,17 @@ module Warren
       @name = name
       begin
         Warren::MessageBusManager.new do |mbm|
-          mbm.channel.direct("").publish @name, :routing_key => "warren.register"
-          mbm.channel.queue(@name, :auto_delete => true).subscribe do |payload|
-            puts "A RESPONSE FROM THE SERVER!!!!"
-            mbm.kill_now
+          mbm.channel.queue("", :exclusive => true, :auto_delete => true) do |queue, declare_ok|
+            data = { :name => @name, :return_queue => queue.name }
+            mbm.channel.direct("").publish data.to_json, :routing_key => "warren.register" 
+            queue.subscribe do |payload|
+              puts "The server has registered us!"
+              puts "Now subscribing to the new channel"
+              exchange = mbm.channel.topic("warren.managed_nodes", :auto_delete => true)
+              mbm.channel.queue(@name).bind(exchange, :routing_key => payload) do |metadata, payload|
+                management(payload, mbm)
+              end
+            end
           end
         end
       rescue Exception => e
@@ -20,6 +28,10 @@ module Warren
         stop
       end
       stop
+    end
+
+    def management(action, mbm)
+      puts "Applying Action ..."
     end
 
     def stop

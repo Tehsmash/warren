@@ -1,74 +1,78 @@
-module Warren
-  require 'warren/message_bus_manager'
-  require 'warren/daemon_process'
-  class Server < Warren::DaemonProcess
-    PID_LOCATION = "/Users/sambetts/.warren/warren_master.pid"
+require 'warren/message_bus_manager'
+require 'warren/daemon_process'
 
-    def initialize() 
-      super(PID_LOCATION)
-      
-      @unregistered_nodes = []
-      @registered_nodes = []
+class Warren::Server < Warren::DaemonProcess
+  PID_LOCATION = "/Users/sambetts/.warren/warren_master.pid"
 
-      begin
-        Warren::MessageBusManager.new do |mbm|
-          mbm.channel.queue("warren.management", :auto_delete => true).subscribe do |payload|
-            server_management(payload, mbm)
-          end
+  def initialize() 
+    super(PID_LOCATION)
 
-          mbm.channel.queue("warren.register", :auto_delete => true).subscribe do |payload|
-            @unregistered_nodes.push(payload)
-          end
+    @groups = []      
+    @nodes = []
+
+    begin
+      Warren::MessageBusManager.new do |mbm|
+        mbm.channel.queue("warren.management", :auto_delete => true).subscribe do |payload|
+          server_management(payload, mbm)
         end
-      rescue Exception => e
-        puts "Woops an error occured!"
-        puts e
-        stop
-      end
 
+        mbm.channel.queue("warren.register", :auto_delete => true).subscribe do |payload|
+          data = JSON.parse(payload)
+          puts "Machine requesting registration.... "
+          puts payload
+          node = Node.new(data['name'], data['return_queue'])
+          @nodes.push(node)
+        end
+
+        exchange = mbm.channel.topic("warren.managed_nodes", :auto_delete => true)
+      end
+    rescue Exception => e
+      puts "Woops an error occured!"
+      puts e
       stop
     end
 
-    def server_management(action, mbm)
-      case action
-      when "shutdown" then shutdown_queues(mbm)
-      when "new config" then puts "Pushing New Config...."
-      when "unregistered_nodes list" then list_unreg_nodes
-      when "unregistered_nodes accept" then accept_nodes(mbm)
-      when "registered_nodes list" then list_reg_nodes
-      else
-        puts "Unrecognised Action - #{action} - Received, Doing Nothing!...."
-      end
-    end
+    stop
+  end
 
-    def shutdown_queues(mbm)
-      puts "Initialising Shutdown...."
-      mbm.kill_now
-    end
-
-    def list_unreg_nodes
-      @unregistered_nodes.each do |node|
-        puts node
-      end
-    end
-
-    def list_reg_nodes
-      @registered_nodes.each do |node|
-        puts node
-      end
-    end
-
-    def accept_nodes(mbm)
-      while @unregistered_nodes.length > 0
-        node = @unregistered_nodes.pop
-        @registered_nodes.push(node)
-        mbm.channel.direct("").publish "HELLO YOU WEIRD THING!", :routing_key => node
-      end
-    end
-
-    def stop
-      puts "Shutting Down the Warren Server Daemon....."
-      kill
+  def server_management(action, mbm)
+    case action
+    when "shutdown" then shutdown_queues(mbm)
+    when "config.new" then puts "Pushing New Config...."
+    when "nodes.list" then list_nodes
+    when "nodes.accept.all" then accept_nodes(mbm)
+    else
+      puts "Unrecognised Action - #{action} - Received, Doing Nothing!...."
     end
   end
+
+  def shutdown_queues(mbm)
+    puts "Initialising Shutdown...."
+    mbm.kill_now
+  end
+
+  def list_nodes
+    @nodes.each do |node|
+      puts "Node: #{node.name}, Registered: #{node.registered}"
+    end
+  end
+
+  def accept_nodes(mbm)
+    puts "Accepting All Unregistered Nodes..."
+    @nodes.each do |node|
+      unless node.registered
+        # Look in the config for the machine
+        # Send back the right queue for the machine to hook into  
+        mbm.channel.direct("").publish "default", :routing_key => node.current_queue
+      end
+    end
+    puts "Done..."
+  end
+
+  def stop
+    puts "Shutting Down the Warren Server Daemon....."
+    kill
+  end
 end
+
+require 'warren/server/node'

@@ -1,6 +1,7 @@
 require 'amqp'
 
 module Warren
-  require 'warren/client'
-  require 'warren/server'
 end
+
+require 'warren/server'
+require 'warren/client'
