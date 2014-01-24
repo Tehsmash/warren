@@ -9,6 +9,7 @@ class Warren::Server < Warren::DaemonProcess
 
     @groups = []      
     @nodes = []
+    @tasks = []
 
     begin
       Warren::MessageBusManager.new do |mbm|
@@ -35,6 +36,17 @@ class Warren::Server < Warren::DaemonProcess
     stop
   end
 
+  def add_task(instruction, task)
+    pieces = instruction.split(".")
+    current = tasks
+    pieces.each do |piece|
+      current = tasks[piece]
+      if current.nil?
+        current = []
+      end
+    end
+  end
+
   def server_management(action, mbm)
     case action
     when "shutdown" then shutdown_queues(mbm)
@@ -51,7 +63,7 @@ class Warren::Server < Warren::DaemonProcess
     mbm.kill_now
   end
 
-  def list_nodes
+  def list_nodes(mbm)
     @nodes.each do |node|
       puts "Node: #{node.name}, Registered: #{node.registered}"
     end
